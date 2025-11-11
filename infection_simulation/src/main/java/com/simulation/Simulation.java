@@ -40,10 +40,29 @@ public class Simulation {
     private Individual createRandomIndividual(boolean isInitial) {
         Vector2D startPosition;
         if (isInitial) {
+            // Populacja początkowa startuje losowo na całym obszarze
             startPosition = new Vector2D(rand.nextDouble() * areaWidth, rand.nextDouble() * areaHeight);
         } else {
-            // UPROSZCZENIE: nowi wciąż startują losowo, a nie na granicy
-            startPosition = new Vector2D(rand.nextDouble() * areaWidth, rand.nextDouble() * areaHeight);
+            // *** POPRAWIONA LOGIKA ***
+            // Nowi osobnicy wkraczają na losowej granicy (zgodnie z PDF)
+            double x, y;
+            int boundary = rand.nextInt(4); // 0=góra, 1=dół, 2=lewo, 3=prawo
+
+            if (boundary == 0) { // góra
+                x = rand.nextDouble() * areaWidth;
+                y = areaHeight;
+            } else if (boundary == 1) { // dół
+                x = rand.nextDouble() * areaWidth;
+                y = 0;
+            } else if (boundary == 2) { // lewo
+                x = 0;
+                y = rand.nextDouble() * areaHeight;
+            } else { // prawo
+                x = areaWidth;
+                y = rand.nextDouble() * areaHeight;
+            }
+            startPosition = new Vector2D(x, y);
+            // *** KONIEC POPRAWIONEJ LOGIKI ***
         }
 
         // --- NOWA LOGIKA STANU POCZĄTKOWEGO ---
