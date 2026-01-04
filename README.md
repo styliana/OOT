@@ -7,3 +7,7 @@
 4) Simulation "Straż" - simulation of fire units in Krakow area using geographical coordinates & 4 design patterns: Strategy, State, Iterator, Observer. 
 
 <img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/9953b9a7-c947-449b-a094-2ad6923ef7ff" /> <img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/217b3789-1c5c-4fe9-a98d-f48846828c26" />
+
+5) Hotel System Simulation -  based on SOLID and overall Object Oriented Programming project patterns. Bookings generated on the separate thread, shown as interactive cards in the GUI.
+
+<img width="600" height="400" alt="image" src="https://github.com/user-attachments/assets/889ee20e-aeba-49c1-a4b5-de967694dbd4" />
