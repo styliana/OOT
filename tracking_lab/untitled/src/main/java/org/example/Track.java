@@ -6,14 +6,12 @@ import java.util.List;
 public class Track {
     private static int nextId = 1;
     public int id;
-
     public double x, y;
     public double vx, vy;
-    public double sigmaX = 5.0, sigmaY = 5.0;
+    public double sigmaX = 2.0, sigmaY = 2.0;
     public int missedFrames = 0;
 
-    // Zmiana: LinkedList do przechowywania ogona (max 50 punktów)
-    public List<Blob.Point> history = new LinkedList<>();
+    public List<DoublePoint> history = new LinkedList<>();
 
     public Track(Blob initialBlob) {
         this.id = nextId++;
@@ -40,17 +38,22 @@ public class Track {
         this.vx = (1 - alpha) * this.vx + alpha * newVx;
         this.vy = (1 - alpha) * this.vy + alpha * newVy;
 
-        this.sigmaX = Math.max(2.0, blob.stdDevX);
-        this.sigmaY = Math.max(2.0, blob.stdDevY);
+        this.sigmaX = Math.max(1.5, blob.stdDevX);
+        this.sigmaY = Math.max(1.5, blob.stdDevY);
 
         addToHistory();
         missedFrames = 0;
     }
 
     private void addToHistory() {
-        history.add(new Blob.Point((int)x, (int)y));
-        if (history.size() > 50) { // Ogranicz długość ogona
+        history.add(new DoublePoint(x, y));
+        if (history.size() > 50) {
             history.remove(0);
         }
+    }
+
+    public static class DoublePoint {
+        public double x, y;
+        public DoublePoint(double x, double y) { this.x = x; this.y = y; }
     }
 }

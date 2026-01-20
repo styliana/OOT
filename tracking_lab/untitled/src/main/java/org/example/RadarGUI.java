@@ -22,12 +22,12 @@ import java.util.Random;
 
 public class RadarGUI extends Application {
 
-    // Ustawienia
+    // Ustawienia siatki
     private static final int GRID_W = 100;
     private static final int GRID_H = 80;
     private static final int CELL_SIZE = 8;
 
-    // Algorytmy
+    // Algorytmy i logika
     private RadarGenerator generator;
     private OtsuBinarizer binarizer;
     private BlobExtractor extractor;
@@ -40,10 +40,16 @@ public class RadarGUI extends Application {
     private Label statusLabel;
     private boolean isRunning = true;
 
-    // Opcje widoku
+    // Opcje wyświetlania
     private boolean showRaw = true;
     private boolean showBlobs = true;
     private boolean showTracks = true;
+
+    // Dane aktualnej klatki
+    private int[][] currentFrame;
+    private List<Blob> detectedBlobs;
+    private List<Track> activeTracks;
+    private int currentThreshold;
 
     public static void main(String[] args) {
         launch(args);
@@ -51,26 +57,24 @@ public class RadarGUI extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        // 1. Inicjalizacja logiki
         initLogic();
 
-        // 2. Budowa interfejsu
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: #2b2b2b;");
 
-        // Płótno do rysowania (Canvas)
+        // Konfiguracja Canvas
         radarCanvas = new Canvas(GRID_W * CELL_SIZE, GRID_H * CELL_SIZE);
         VBox canvasContainer = new VBox(radarCanvas);
         canvasContainer.setPadding(new Insets(10));
         canvasContainer.setStyle("-fx-border-color: #444; -fx-border-width: 2px;");
         root.setCenter(canvasContainer);
 
-        // Panel sterowania (Dół)
+        // Panel sterowania
         VBox bottomPanel = new VBox(10);
         bottomPanel.setPadding(new Insets(10));
         bottomPanel.setStyle("-fx-background-color: #333;");
 
-        // Wiersz 1: Przyciski i Checkboxy
+        // Wiersz 1: Kontrolki widoku
         HBox controls = new HBox(15);
         Button btnPause = new Button("Pauza / Start");
         btnPause.setOnAction(e -> isRunning = !isRunning);
@@ -96,14 +100,13 @@ public class RadarGUI extends Application {
         HBox sliderBox = new HBox(10);
         Label lblSlider = new Label("Liczba celów: 3");
         lblSlider.setTextFill(Color.WHITE);
-        lblSlider.setMinWidth(100);
+        lblSlider.setMinWidth(120);
 
-        Slider targetSlider = new Slider(0, 100, 3); // Min 0, Max 100, Start 3
+        Slider targetSlider = new Slider(0, 100, 3);
         targetSlider.setShowTickLabels(true);
         targetSlider.setShowTickMarks(true);
         targetSlider.setMajorTickUnit(10);
-        targetSlider.setBlockIncrement(1);
-        targetSlider.setPrefWidth(400);
+        targetSlider.setPrefWidth(500);
 
         targetSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
             int count = newVal.intValue();
@@ -113,21 +116,20 @@ public class RadarGUI extends Application {
 
         sliderBox.getChildren().addAll(lblSlider, targetSlider);
 
-        // Wiersz 3: Status
+        // Wiersz 3: Pasek statusu
         statusLabel = new Label("Inicjalizacja...");
         statusLabel.setTextFill(Color.LIGHTGRAY);
 
         bottomPanel.getChildren().addAll(controls, sliderBox, statusLabel);
         root.setBottom(bottomPanel);
 
-        // 3. Pętla animacji (Game Loop)
+        // Pętla animacji (Game Loop) - ok. 15-20 FPS dla stabilności MHT
         AnimationTimer timer = new AnimationTimer() {
             private long lastUpdate = 0;
 
             @Override
             public void handle(long now) {
-                // Ograniczenie do ok. 15 FPS dla czytelności symulacji
-                if (isRunning && now - lastUpdate >= 66_000_000) {
+                if (isRunning && now - lastUpdate >= 60_000_000) {
                     updateSimulation();
                     lastUpdate = now;
                 }
@@ -148,84 +150,70 @@ public class RadarGUI extends Application {
         extractor = new BlobExtractor();
         tracker = new MHTTracker();
         realTargets = new ArrayList<>();
-
-        // Startujemy z 3 celami
         updateTargetCount(3);
     }
 
-    // Dynamiczna aktualizacja liczby celów
     private void updateTargetCount(int count) {
-        // Jeśli mamy za mało - dodajemy
         while (realTargets.size() < count) {
             double x = random.nextInt(GRID_W - 10) + 5;
             double y = random.nextInt(GRID_H - 10) + 5;
-            // Losowa prędkość między -1.0 a 1.0
-            double vx = (random.nextDouble() - 0.5) * 2.0;
-            double vy = (random.nextDouble() - 0.5) * 2.0;
+            double vx = (random.nextDouble() - 0.5) * 1.5;
+            double vy = (random.nextDouble() - 0.5) * 1.5;
             realTargets.add(new SimulatedTarget(x, y, vx, vy));
         }
-        // Jeśli mamy za dużo - usuwamy
         while (realTargets.size() > count) {
             realTargets.remove(realTargets.size() - 1);
         }
     }
 
-    // --- LOGIKA SYMULACJI ---
-    private int[][] currentFrame;
-    private List<Blob> detectedBlobs;
-    private List<Track> activeTracks;
-    private int currentThreshold;
-
     private void updateSimulation() {
-        // 1. Ruch celów
+        // 1. Ruch celów (Świat rzeczywisty)
         List<Blob.Point> targetPositions = new ArrayList<>();
         for (SimulatedTarget t : realTargets) {
             t.move();
             targetPositions.add(new Blob.Point((int)t.x, (int)t.y));
         }
 
-        // 2. Generowanie radaru
+        // 2. Generowanie obrazu radaru (Sensor)
         currentFrame = generator.generateFrame(targetPositions);
 
-        // 3. Przetwarzanie
+        // 3. Przetwarzanie sygnału (Otsu + CCL) [cite: 16, 46]
         currentThreshold = binarizer.calculateThreshold(currentFrame, GRID_W, GRID_H);
         detectedBlobs = extractor.extract(currentFrame, currentThreshold, GRID_W, GRID_H);
 
-        // 4. Śledzenie
+        // 4. Śledzenie (MHT - Asocjacja probabilistyczna) [cite: 88, 108]
         tracker.updateTracks(detectedBlobs);
         activeTracks = tracker.getTracks();
     }
 
-    // --- RYSOWANIE ---
     private void draw() {
         if (currentFrame == null) return;
 
         GraphicsContext gc = radarCanvas.getGraphicsContext2D();
-
-        // Tło
         gc.setFill(Color.BLACK);
         gc.fillRect(0, 0, radarCanvas.getWidth(), radarCanvas.getHeight());
 
-        // Surowe dane (Piksele)
+        // Rysowanie surowego sygnału
         if (showRaw) {
             for (int y = 0; y < GRID_H; y++) {
                 for (int x = 0; x < GRID_W; x++) {
                     int val = currentFrame[y][x];
-                    if (val > 20) {
+                    if (val > 25) { // Próg wizualny szumu
                         double brightness = val / 255.0;
-                        gc.setFill(Color.hsb(120, 1.0, brightness)); // Zieleń
+                        gc.setFill(Color.hsb(120, 0.8, brightness));
                         gc.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
                     }
                 }
             }
         }
 
-        // Bloby (Czerwone ramki)
+        // Rysowanie wykrytych blobów (Bounding Boxes) [cite: 43]
         if (showBlobs && detectedBlobs != null) {
             gc.setStroke(Color.RED);
-            gc.setLineWidth(1);
+            gc.setLineWidth(1.2);
             for (Blob b : detectedBlobs) {
-                double size = Math.max(b.stdDevX, b.stdDevY) * 4;
+                // Rozmiar ramki skalowany odchyleniem standardowym [cite: 68]
+                double size = Math.max(b.stdDevX, b.stdDevY) * 5;
                 gc.strokeRect(
                         (b.meanX * CELL_SIZE) - size/2,
                         (b.meanY * CELL_SIZE) - size/2,
@@ -234,36 +222,37 @@ public class RadarGUI extends Application {
             }
         }
 
-        // Ścieżki MHT (Linie)
+        // Rysowanie ścieżek MHT (Trajektorie historyczne) [cite: 10, 89]
         if (showTracks && activeTracks != null) {
-            gc.setStroke(Color.CYAN);
-            gc.setLineWidth(2);
-            gc.setFill(Color.WHITE);
-
+            gc.setLineWidth(1.5);
             for (Track t : activeTracks) {
                 if (t.history.size() > 1) {
+                    gc.setStroke(Color.CYAN);
                     gc.beginPath();
-                    Blob.Point start = t.history.get(0);
+                    // Użycie DoublePoint dla płynności linii
+                    Track.DoublePoint start = t.history.get(0);
                     gc.moveTo(start.x * CELL_SIZE + CELL_SIZE/2.0, start.y * CELL_SIZE + CELL_SIZE/2.0);
 
                     for (int i = 1; i < t.history.size(); i++) {
-                        Blob.Point p = t.history.get(i);
+                        Track.DoublePoint p = t.history.get(i);
                         gc.lineTo(p.x * CELL_SIZE + CELL_SIZE/2.0, p.y * CELL_SIZE + CELL_SIZE/2.0);
                     }
                     gc.stroke();
                 }
-                gc.fillText("ID:" + t.id, t.x * CELL_SIZE + 10, t.y * CELL_SIZE);
+
+                // Identyfikator ścieżki
+                gc.setFill(Color.WHITE);
+                gc.fillText("ID:" + t.id, t.x * CELL_SIZE + 8, t.y * CELL_SIZE - 5);
             }
         }
 
-        statusLabel.setText(String.format("Próg Otsu: %d | Obiekty (Realne): %d | Wykryte Bloby: %d | Ścieżki: %d",
+        statusLabel.setText(String.format("Próg Otsu: %d | Obiekty (Realne): %d | Bloby: %d | Ścieżki: %d",
                 currentThreshold,
                 realTargets.size(),
                 (detectedBlobs != null ? detectedBlobs.size() : 0),
                 (activeTracks != null ? activeTracks.size() : 0)));
     }
 
-    // Cel symulowany
     static class SimulatedTarget {
         double x, y, vx, vy;
         public SimulatedTarget(double x, double y, double vx, double vy) {
@@ -271,7 +260,7 @@ public class RadarGUI extends Application {
         }
         public void move() {
             x += vx; y += vy;
-            // Odbijanie od ścian
+            // Odbicia od granic obszaru roboczego
             if (x < 2 || x >= GRID_W - 2) vx = -vx;
             if (y < 2 || y >= GRID_H - 2) vy = -vy;
         }

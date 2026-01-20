@@ -4,50 +4,38 @@ import java.util.List;
 import java.util.Random;
 
 public class RadarGenerator {
-    private int width;
-    private int height;
-    private Random random;
+    private int width, height;
+    private Random random = new Random();
 
     public RadarGenerator(int width, int height) {
         this.width = width;
         this.height = height;
-        this.random = new Random();
     }
 
-    // Metoda generuje klatkę na podstawie podanych pozycji "prawdziwych" celów
     public int[][] generateFrame(List<Blob.Point> trueTargets) {
         int[][] frame = new int[height][width];
 
-        // 1. Szum tła
+        // Generowanie szumu tła [cite: 13]
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                frame[y][x] = random.nextInt(50); // Szum 0-50
+                frame[y][x] = random.nextInt(40);
             }
         }
 
-        // 2. Rysowanie celów w zadanych pozycjach
+        // Rysowanie echa obiektów [cite: 9, 12]
         if (trueTargets != null) {
             for (Blob.Point p : trueTargets) {
-                drawTarget(frame, p.x, p.y);
-            }
-        }
-
-        return frame;
-    }
-
-    private void drawTarget(int[][] frame, int cx, int cy) {
-        // Rysujemy jasną plamę (blob)
-        for (int dy = -2; dy <= 2; dy++) {
-            for (int dx = -2; dx <= 2; dx++) {
-                int px = cx + dx;
-                int py = cy + dy;
-
-                if (px >= 0 && px < width && py >= 0 && py < height) {
-                    // Symulacja echa: wysoka wartość + trochę szumu
-                    int signal = 200 + random.nextInt(56);
-                    frame[py][px] = Math.min(255, signal);
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int px = p.x + dx;
+                        int py = p.y + dy;
+                        if (px >= 0 && px < width && py >= 0 && py < height) {
+                            frame[py][px] = 210 + random.nextInt(45);
+                        }
+                    }
                 }
             }
         }
+        return frame;
     }
 }

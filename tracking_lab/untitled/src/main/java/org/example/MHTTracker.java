@@ -6,92 +6,60 @@ import java.util.List;
 public class MHTTracker {
     private List<Track> tracks = new ArrayList<>();
 
-    // Maksymalna odległość (w odchyleniach standardowych), 
-    // aby uznać dopasowanie za możliwe (bramkowanie).
-    private static final double GATE_THRESHOLD = 3.0;
+    // Bramka ograniczająca przestrzeń poszukiwań asocjacji
+    private static final double GATE_THRESHOLD = 2.0;
 
-    /**
-     * Główna metoda aktualizująca śledzenie
-     */
     public void updateTracks(List<Blob> measurements) {
-        // 1. Predykcja dla wszystkich istniejących ścieżek 
+        // 1. Przewidywanie przyszłych pozycji
         for (Track t : tracks) {
             t.predict();
         }
 
-        // 2. Asocjacja (Budowanie macierzy kosztów)
-        // Szukamy najlepszego dopasowania Blob <-> Track
-        // W pełnym MHT budowalibyśmy tutaj drzewo hipotez [cite: 126]
+        List<Blob> availableBlobs = new ArrayList<>(measurements);
 
-        List<Track> matchedTracks = new ArrayList<>();
-        List<Blob> matchedBlobs = new ArrayList<>();
-
+        // 2. Przypisanie pomiarów do hipotez (zachłanne dopasowanie prawdopodobieństwa)
         for (Track t : tracks) {
             Blob bestBlob = null;
-            double maxProbability = -1.0;
+            double maxProb = -1.0;
 
-            for (Blob b : measurements) {
-                if (matchedBlobs.contains(b)) continue; // Ten blob jest już zajęty
-
-                // Obliczamy prawdopodobieństwo dopasowania [cite: 72-74]
+            for (Blob b : availableBlobs) {
+                // Wykorzystanie funkcji gęstości prawdopodobieństwa (PDF)
                 double prob = calculateGaussianProbability(t, b);
 
-                // Sprawdzamy czy to najlepszy kandydat i czy mieści się w "bramce"
-                if (prob > maxProbability && isInsideGate(t, b)) {
-                    maxProbability = prob;
+                if (prob > maxProb && isInsideGate(t, b)) {
+                    maxProb = prob;
                     bestBlob = b;
                 }
             }
 
             if (bestBlob != null) {
                 t.update(bestBlob);
-                matchedTracks.add(t);
-                matchedBlobs.add(bestBlob);
+                availableBlobs.remove(bestBlob);
             } else {
                 t.missedFrames++;
             }
         }
 
-        // 3. Zarządzanie życiem ścieżek
+        // 3. Odrzucenie mało prawdopodobnych ścieżek
+        tracks.removeIf(t -> t.missedFrames > 10);
 
-        // A. Usuwanie martwych ścieżek
-        tracks.removeIf(t -> t.missedFrames > 5);
-
-        // B. Tworzenie nowych ścieżek dla nieprzypisanych blobów
-        for (Blob b : measurements) {
-            if (!matchedBlobs.contains(b)) {
-                // Nowa hipoteza: to jest nowy obiekt 
-                tracks.add(new Track(b));
-            }
+        // 4. Inicjalizacja nowych hipotez z nieprzypisanych pomiarów
+        for (Blob b : availableBlobs) {
+            tracks.add(new Track(b));
         }
     }
 
-    /**
-     * KROK 1.3: Obliczanie prawdopodobieństwa z rozkładu normalnego (wzór 1) 
-     * P(blob | track) = P(bx | tx) * P(by | ty)
-     */
     private double calculateGaussianProbability(Track t, Blob b) {
-        double probX = gaussian(b.meanX, t.x, t.sigmaX);
-        double probY = gaussian(b.meanY, t.y, t.sigmaY);
-        return probX * probY;
+        // Implementacja wzoru na rozkład normalny (Gaussa)
+        double pX = (1.0 / (t.sigmaX * Math.sqrt(2 * Math.PI))) * Math.exp(-Math.pow(b.meanX - t.x, 2) / (2 * Math.pow(t.sigmaX, 2)));
+        double pY = (1.0 / (t.sigmaY * Math.sqrt(2 * Math.PI))) * Math.exp(-Math.pow(b.meanY - t.y, 2) / (2 * Math.pow(t.sigmaY, 2)));
+        return pX * pY;
     }
 
-    // Wzór matematyczny (1) z PDF
-    private double gaussian(double x, double mu, double sigma) {
-        if (sigma == 0) return 0; // Zabezpieczenie
-        double exponent = -Math.pow(x - mu, 2) / (2 * Math.pow(sigma, 2));
-        return (1.0 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
-    }
-
-    // Sprawdza czy blob jest wystarczająco blisko (Mahalanobis distance w uproszczeniu)
     private boolean isInsideGate(Track t, Blob b) {
         double dist = Math.sqrt(Math.pow(b.meanX - t.x, 2) + Math.pow(b.meanY - t.y, 2));
-        // Dopuszczamy błąd 3*sigma (99.7% pewności)
-        double limit = 3.0 * Math.max(t.sigmaX, t.sigmaY);
-        return dist < limit;
+        return dist < (GATE_THRESHOLD * Math.max(t.sigmaX, t.sigmaY));
     }
 
-    public List<Track> getTracks() {
-        return tracks;
-    }
+    public List<Track> getTracks() { return tracks; }
 }
