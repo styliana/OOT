@@ -11,3 +11,6 @@
 5) Hotel System Simulation -  based on SOLID and overall Object Oriented Programming project patterns. Bookings generated on the separate thread, shown as interactive cards in the GUI.
 
 <img width="600" height="400" alt="image" src="https://github.com/user-attachments/assets/889ee20e-aeba-49c1-a4b5-de967694dbd4" />
+
+6) TrackingLab - simulation of object detection using MHTTracker and OtsuBinarizer.
+<img width="1304" height="829" alt="image" src="https://github.com/user-attachments/assets/8b60fe8f-d2f6-4c84-b176-ea2306aad529" />
